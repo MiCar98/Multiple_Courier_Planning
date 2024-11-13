@@ -27,7 +27,7 @@ constraint (max(Dist[1..m])>=LB); %The maximum distance must be higher than the 
 
 %Problem Constraints==============================================================================================================================
 
-constraint forall(i in 1..m)(subcircuit(Z[i,1..n+1]));%EaZ[i,1..n+1],ch permutation is a subcircuit of the complete graph
+constraint forall(i in 1..m)(subcircuit(Z[i,1..n+1]));%Z[i,1..n+1],ch permutation is a subcircuit of the complete graph
 constraint forall(i in 1..m)(sum(j in 1..n where Z[i,j]!=j)(s[j])<=l[i]);%Load capacities must be respected
 constraint forall(j in 1..n)((count(r in Z[1..m,j])(r!=j))==1); %Each item can only be carried by one courier
 constraint forall(i in 1..m)(Z[i,n+1]!=(n+1)); %Each courier has to live the depot
@@ -39,12 +39,21 @@ constraint forall(i in 1..m, j in 1..n where Z[i,j]!=j) (Carry[j] = i); %Carry a
 constraint bin_packing_capa(l, Carry, s); %Load Capacities must be respected
 
 %Symmetry Breaking Constraints====================================================================================================================
-%constraint forall(i in 1..m, j in i+1..m where l[i]=l[j])(lex_lesseq(Z[j,1..n+1])); %Ensure that two couriers with the same load size take different paths
+%constraint forall(i in 1..m, j in i+1..m where l[i]=l[j])(lex_lesseq(Z[i, 1..n+1], Z[j,1..n+1])); %Ensure that two couriers with the same load size take different paths
 
-int: Scale=500;
-%int: Base=2;
-%solve :: int_search(Z, dom_w_deg, indomain_random, complete)::restart_luby(Scale)::relax_and_reconstruct(array1d(Z),90) minimize(max(Dist[1..m]));
 
-solve :: int_search(Z, dom_w_deg, indomain_random, complete) minimize(max(Dist[1..m]));
-%solve minimize(max(Dist[1..m]));
+%SOLVER CONFIGURATIONS
+
+%Configuration 1
+%solve :: int_search(Z, dom_w_deg, indomain_random, complete) minimize(max(Dist[1..m]));
+
+%Configuration 2
+%solve :: seq_search([int_search(Z, first_fail, indomain_min, complete), int_search(Z, dom_w_deg, indomain_random,complete)])::restart_luby(10)::relax_and_reconstruct(array1d(Z),50)minimize(max(Dist[1..m]));
+
+%Configuration 3
+%solve :: seq_search([int_search(Z,first_fail,indomain_random, complete), int_search(Z,dom_w_deg,indomain_random,complete)])::restart_luby(10)::relax_and_reconstruct(array1d(Z),60)minimize(max(Dist[1..m]));
+
+%Configuration 4
+solve :: seq_search([int_search(Z,first_fail,indomain_random, complete), int_search(Z,dom_w_deg,indomain_random,complete)])::restart_luby(10)::relax_and_reconstruct(array1d(Z),70)minimize(max(Dist[1..m]));
+
 
