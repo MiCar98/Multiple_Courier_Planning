@@ -1,16 +1,17 @@
 from z3 import *
 from Bool_utils import *
 from colorama import Fore
+import time
 
 
 
-# N_inst = sys.argv[1]
-# if int(N_inst)<10:
-#     name_inst="\\Instances\\inst0"+N_inst+".dat"
-# else:
-#     name_inst="\\Instances\\inst"+N_inst+".dat"
+N_inst = sys.argv[1]
+if int(N_inst)<10:
+     name_inst=".\\Instances\\inst0"+N_inst+".dat"
+else:
+    name_inst=".\\Instances\\inst"+N_inst+".dat"
 
-name_inst = 'C:\\Users\\Utente\\Desktop\\Università\\Magistrale\\CDMO\\Project\\Instances\\inst03.dat'
+#name_inst = 'C:\\Users\\Utente\\Desktop\\Università\\Magistrale\\CDMO\\Project\\Instances\\inst01.dat'
 
 #Open instance .dat file
 f = open(name_inst, 'r')
@@ -53,12 +54,13 @@ UB = 0
 for i in range(n):
     UB+=max(Dnp[i,:])
 
-print(m)
+print(Fore.WHITE+f'{m}')
 print(n)
 print(l)
 print(s)
 print(D)
 
+start_encode=time.time()
 #Convert all parameter values into boolean arrays
 max_load = max(sum(s), max(l))
 max_load_bits = convert_dec_to_bool(max_load)['Num_bits']
@@ -76,6 +78,7 @@ D_bool = [[convert_dec_to_bool(D[i][j], UB_bits)['Conversion'].tolist() for j in
 
 LB_bool = convert_dec_to_bool(LB, UB_bits)['Conversion'].tolist()
 UB_bool = convert_dec_to_bool(UB, UB_bits)['Conversion'].tolist()
+LLB_bool = convert_dec_to_bool(LLB, UB_bits)['Conversion'].tolist()
 
 #Delivery assignment matrix
 A = [[Bool(f"a_{i}_{j}") for j in range(n)] for i in range(m)]
@@ -183,7 +186,11 @@ lb_const = compare(Max_Dist, LB_bool, '>=')
 ub_const = And(
     *[compare(Dist[i], UB_bool, '<=') for i in range(m)]
 )
+llb_const = And(
+    *[compare(Dist[i], LLB_bool, '>=') for i in range(m)]
+)
 o = Optimize()
+#o = Solver()
 
 o.add(const_1) 
 o.add(const_2) 
@@ -199,53 +206,40 @@ o.add(const_10)
 o.add(const_11)
 o.add(const_12) 
 o.add(const_13) 
-#o.add(compare(convert_dec_to_bool(14, UB_bits)['Conversion'].tolist(), Max_Dist, '=='))
+#o.add(compare(convert_dec_to_bool(14, UB_bits)['Conversion'].tolist(), Max_Dist, '==')
 
 o.add(lb_const)
 o.add(ub_const)
+o.add(llb_const)
 
-# val_ass={
-#     G[0][0][0]: BoolVal(False), G[0][0][1]: BoolVal(False), G[0][0][2]: BoolVal(False), G[0][0][3]: BoolVal(False), G[0][0][4]: BoolVal(False), G[0][0][5]: BoolVal(False), G[0][0][6]: BoolVal(BoolVal(True)),
-#     G[0][1][0]: BoolVal(False), G[0][1][1]: BoolVal(False), G[0][1][2]: BoolVal(False), G[0][1][3]: BoolVal(False), G[0][1][4]: BoolVal(False), G[0][1][5]: BoolVal(False), G[0][1][6]: BoolVal(False),
-#     G[0][2][0]: BoolVal(True),  G[0][2][1]: BoolVal(False), G[0][2][2]: BoolVal(False), G[0][2][3]: BoolVal(False), G[0][2][4]: BoolVal(False), G[0][2][5]: BoolVal(False), G[0][2][6]: BoolVal(False),
-#     G[0][3][0]: BoolVal(False), G[0][3][1]: BoolVal(False), G[0][3][2]: BoolVal(True),  G[0][3][3]: BoolVal(False), G[0][3][4]: BoolVal(False), G[0][3][5]: BoolVal(False), G[0][3][6]: BoolVal(False), 
-#     G[0][4][0]: BoolVal(False), G[0][4][1]: BoolVal(False), G[0][4][2]: BoolVal(False), G[0][4][3]: BoolVal(False), G[0][4][4]: BoolVal(False), G[0][4][5]: BoolVal(False), G[0][4][6]: BoolVal(False),
-#     G[0][5][0]: BoolVal(False), G[0][5][1]: BoolVal(False), G[0][5][2]: BoolVal(False), G[0][5][3]: BoolVal(False), G[0][5][4]: BoolVal(False), G[0][5][5]: BoolVal(False), G[0][5][6]: BoolVal(False), 
-#     G[0][6][0]: BoolVal(False), G[0][6][1]: BoolVal(False), G[0][6][2]: BoolVal(False), G[0][6][3]: BoolVal(True),  G[0][6][4]: BoolVal(False), G[0][6][5]: BoolVal(False), G[0][6][6]: BoolVal(False),
-    
-#     G[1][0][0]: BoolVal(False), G[1][0][1]: BoolVal(False), G[1][0][2]: BoolVal(False), G[1][0][3]: BoolVal(False), G[1][0][4]: BoolVal(False), G[1][0][5]: BoolVal(False), G[1][0][6]: BoolVal(False),
-#     G[1][1][0]: BoolVal(False), G[1][1][1]: BoolVal(False), G[1][1][2]: BoolVal(False), G[1][1][3]: BoolVal(False), G[1][1][4]: BoolVal(True),  G[1][1][5]: BoolVal(False), G[1][1][6]: BoolVal(False),
-#     G[1][2][0]: BoolVal(False), G[1][2][1]: BoolVal(False), G[1][2][2]: BoolVal(False), G[1][2][3]: BoolVal(False), G[1][2][4]: BoolVal(False), G[1][2][5]: BoolVal(False), G[1][2][6]: BoolVal(False),
-#     G[1][3][0]: BoolVal(False), G[1][3][1]: BoolVal(False), G[1][3][2]: BoolVal(False), G[1][3][3]: BoolVal(False), G[1][3][4]: BoolVal(False), G[1][3][5]: BoolVal(False), G[1][3][6]: BoolVal(False), 
-#     G[1][4][0]: BoolVal(False), G[1][4][1]: BoolVal(False), G[1][4][2]: BoolVal(False), G[1][4][3]: BoolVal(False), G[1][4][4]: BoolVal(False), G[1][4][5]: BoolVal(True),  G[1][4][6]: BoolVal(False),
-#     G[1][5][0]: BoolVal(False), G[1][5][1]: BoolVal(False), G[1][5][2]: BoolVal(False), G[1][5][3]: BoolVal(False), G[1][5][4]: BoolVal(False), G[1][5][5]: BoolVal(False), G[1][5][6]: BoolVal(True), 
-#     G[1][6][0]: BoolVal(False), G[1][6][1]: BoolVal(True),  G[1][6][2]: BoolVal(False), G[1][6][3]: BoolVal(False), G[1][6][4]: BoolVal(False), G[1][6][5]: BoolVal(False), G[1][6][6]: BoolVal(False),   
-# }
+end_encode = time.time()
+print(f"Encoding time: "+ Fore.MAGENTA+f"{end_encode-start_encode}")
 
-# valid=verify_solution(o, val_ass)
-# print(valid)
-o.set("timeout", 30000)
+start_optimize = time.time()
+o.set("timeout", 300000)
 objective = Sum([If(Max_Dist[i], 2**(len(Max_Dist)-i), 0) for i in range(len(Max_Dist))])
 o.minimize(objective)
 
-if o.check() == sat:
-    print("Satisfiable, with model:")
+
+res = o.check()
+if res == sat:
+    print(Fore.WHITE+"Satisfiable, with model:")
     model=o.model()
     #print("Objective value:", model.eval(objective))
     
-    print(f"Upper Bound is {convert_bool_to_dec(UB_bool)}")
-    print(f"Lower Bound is {convert_bool_to_dec(LB_bool)}")
+    print(Fore.WHITE+f"Upper Bound is {convert_bool_to_dec(UB_bool)}")
+    print(Fore.WHITE+f"Lower Bound is {convert_bool_to_dec(LB_bool)}")
 
-    print(f"Bool Maximum Distance is {[model.evaluate(Max_Dist[i]) for i in range(UB_bits)]}")
-    print(f"Maximum Distance is"+ Fore.MAGENTA + f" {convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])}")
+    print(Fore.WHITE+f"Bool Maximum Distance is {[model.evaluate(Max_Dist[i]) for i in range(UB_bits)]}")
+    print(Fore.WHITE+f"Maximum Distance is"+ Fore.MAGENTA + f" {convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])}")
 
     print(Fore.WHITE+f"Assignments are: {[[model.evaluate(A[i][j]) for j in range(n)] for i in range(m)]}")
 
-    print("Distances:")
+    print(Fore.WHITE+"Distances:")
     for i in range(m):
         print(convert_bool_to_dec([model.evaluate(Dist[i][k]) for k in range(UB_bits)]))
 
-    print("Loads:")
+    print(Fore.WHITE+"Loads:")
     for i in range(m):
         print(convert_bool_to_dec([model.evaluate(C[i][k]) for k in range(max_load_bits)]))
 
@@ -272,5 +266,12 @@ if o.check() == sat:
         print()
     print()
 
-else:
+elif res==unsat:
     print("Unsatisfiable.")
+else:
+    print("No optimal solution found")
+    model=o.model()
+    print(Fore.WHITE+f"Sub-Optimal Maximum Distance is"+ Fore.MAGENTA + f" {convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])}")
+end_optimize = time.time()
+print(Fore.WHITE + f"Solution time: "+ Fore.MAGENTA+f"{end_optimize-start_optimize}")
+print(Fore.WHITE + f"Total time: "+ Fore.MAGENTA+f"{end_encode+end_optimize-start_encode-start_optimize}")
