@@ -2,16 +2,15 @@ import math
 import numpy as np
 from z3 import *
 from itertools import combinations
-import random as rand
 
 def at_least_one_np(bool_vars):
     return Or(bool_vars)
 
-def at_most_one_np(bool_vars, name = ""):
+def at_most_one_np(bool_vars):
     return And([Not(And(pair[0], pair[1])) for pair in combinations(bool_vars, 2)])
 
 def exactly_one_np(bool_vars, name = ""):
-    return And(at_least_one_np(bool_vars), at_most_one_np(bool_vars, name))
+    return And(at_least_one_np(bool_vars), at_most_one_np(bool_vars))
 
 def flatten(matrix):
     return [e for row in matrix for e in row]
@@ -139,14 +138,12 @@ def sum_cond_on_array_constraint(decision, array, conditions, name):
   if len(array)!=len(conditions):
     print("Number of numbers to sum does't match the number of conditions")
   bits=len(array[0])
-  ZERO = convert_dec_to_bool(0,bits)['Conversion'].tolist()
   ps = [[Bool(f"bit_{j}_of_ps_{i}_from_{name}") for j in range(bits)]for i in range(len(array))]
   ps.append(decision)
-  ps[0]=ZERO
-
   const = And(
+      Not(Or(ps[0])),
     *[And(Implies(conditions[i], sum_2_bool_constraint(ps[i], array[i], ps[i+1], f"Partial_Sum_{i}_from_{name}")), 
-          Implies(Not(conditions[i]), sum_2_bool_constraint(ps[i], ZERO, ps[i+1], f"Partial_Sum_{i}_from_{name}"))) for i in range(len(array))])
+          Implies(Not(conditions[i]), compare(ps[i], ps[i+1], '=='))) for i in range(len(array))])
   
   return const
   
@@ -195,7 +192,25 @@ def compare(num_1, num_2, operator='>'):
     print("Unsupported Operator")
     return []
 
+def consecutive(v, u):
+    n = len(v)
+    const = And(
+      Not(u[0]),
+      *[v[i] == u[i+1] for i in range(n-1)],
+      Not(v[n-1])
+    )
 
+    return const
+
+def verify_solution(solver, var_assignments):
+    # Get the constraints
+    constraints = solver.assertions()
+
+    # Substitute variable values into constraints
+    substituted_constraints = [z3.simplify(z3.substitute(constraint, *[(var, val) for var, val in var_assignments.items()]))for constraint in constraints]
+
+    # Check if all constraints are satisfied
+    return substituted_constraints
 # s = Solver()
 # bits=8
 

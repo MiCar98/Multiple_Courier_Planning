@@ -4,26 +4,63 @@ from colorama import Fore
 
 
 
-#Parameters instance 1
+# N_inst = sys.argv[1]
+# if int(N_inst)<10:
+#     name_inst="\\Instances\\inst0"+N_inst+".dat"
+# else:
+#     name_inst="\\Instances\\inst"+N_inst+".dat"
 
-m = 2
-n = 6
-l= [15, 10]
-s = [3, 2, 6, 5, 4, 4]
-D = [[0, 3, 4, 5, 6, 6, 2],
-     [3, 0, 1, 4, 5, 7, 3],
-     [4, 1, 0, 5, 6, 6, 4],
-     [4, 4, 5, 0, 3, 3, 2],
-     [6, 7, 8, 3, 0, 2, 4],
-     [6, 7, 8, 3, 2, 0, 4],
-     [2, 3, 4, 3, 4, 4, 0]]
+name_inst = 'C:\\Users\\Utente\\Desktop\\Università\\Magistrale\\CDMO\\Project\\Instances\\inst03.dat'
 
-LB = 8
-UB = 40
+#Open instance .dat file
+f = open(name_inst, 'r')
 
+#Read number of couriers
+m=int(f.readline())
+
+#Read number of items
+n=int(f.readline())
+
+#Read courier capacities
+l_split = f.readline().split()
+l=[]
+for i in l_split:
+    l.append(int(i))
+
+#Read item sizes
+s_split = f.readline().split()
+s=[]
+for i in s_split:
+    s.append(int(i))
+
+#Read distance matrix
+D = []
+for i in range(n+1):
+    d_split = f.readline().split()
+    d_row = []
+    for j in d_split:
+        d_row.append(int(j))
+    D.append(d_row)
+
+Dnp = np.array(D)
+round_trips=[]
+for i in range(n):
+    round_trips.append(Dnp[i][n]+Dnp[n][i])
+LB = max(round_trips)
+LLB = min(round_trips)
+
+UB = 0
+for i in range(n):
+    UB+=max(Dnp[i,:])
+
+print(m)
+print(n)
+print(l)
+print(s)
+print(D)
 
 #Convert all parameter values into boolean arrays
-max_load = sum(s)
+max_load = max(sum(s), max(l))
 max_load_bits = convert_dec_to_bool(max_load)['Num_bits']
 UB_bits = convert_dec_to_bool(UB)['Num_bits']
 Dist = [[Bool(f"dist_{i}_bit_{j}") for j in range(UB_bits)] for i in range(m)]
@@ -200,9 +237,9 @@ if o.check() == sat:
     print(f"Lower Bound is {convert_bool_to_dec(LB_bool)}")
 
     print(f"Bool Maximum Distance is {[model.evaluate(Max_Dist[i]) for i in range(UB_bits)]}")
-    print(f"Maximum Distance is {convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])}")
+    print(f"Maximum Distance is"+ Fore.MAGENTA + f" {convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])}")
 
-    print(f"Assignments are: {[[model.evaluate(A[i][j]) for j in range(n)] for i in range(m)]}")
+    print(Fore.WHITE+f"Assignments are: {[[model.evaluate(A[i][j]) for j in range(n)] for i in range(m)]}")
 
     print("Distances:")
     for i in range(m):
