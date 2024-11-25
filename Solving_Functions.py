@@ -1,14 +1,18 @@
 import datetime
 from minizinc import Instance, Model, Solver
 import numpy as np
-def Solve_CP(n_couriers, n_items, courier_loads, item_sizes, distances, upper_bound, lower_bound, minimum_distance, simple=True ,solver_name='gecode'):
+import time, math
+from z3 import *
+from SAT_utils import *
+def Solve_CP(n_couriers, n_items, courier_loads, item_sizes, distances, upper_bound, lower_bound, minimum_distance, simple=True, solver_name='gecode', break_symmetry=True):
 
+    encoding_start = time.time()
     solver = Solver.lookup(solver_name)
     
     if simple:
-        MCP = Model("CP_Model_4_0_1_easy.mzn")
+        MCP = Model("Project\\CP_Model_4_0_1_easy.mzn")
     else:
-        MCP = Model("CP_Model_4_0_1_hard.mzn")
+        MCP = Model("Project\\CP_Model_4_0_1_hard.mzn")
 
     MCP_instance = Instance(solver, MCP)
 
@@ -26,33 +30,281 @@ def Solve_CP(n_couriers, n_items, courier_loads, item_sizes, distances, upper_bo
     print(MCP_instance["UB"])
 
 
-
+    name=''
     #Check if the distance matrix is symmetric and apply symmetry breaking constraint if so
-    if np.all(distances == distances.T):
+    if break_symmetry and np.all(distances == distances.T):
         print("Matrix is symmetric")
+        name=solver_name+'_symmetry_break'
         MCP_instance.add_string("constraint forall(i in 1..m)(arg_max(Z[i,1..n+1])>Z[i,n+1]);")
-        
+    else:
+        name=solver_name    
 
+    encoding_stop = time.time()
+    encoding_time = encoding_stop-encoding_start    
     #Solve computing the solution
-    to = datetime.timedelta(seconds=300)
+    to = datetime.timedelta(seconds=300-math.floor(encoding_time))
+    solving_start = time.time()
     print(f"Solving the problem with\nnumber of couriers = {MCP_instance['m']}\nnumber of items = {MCP_instance['n']}\n")
     result = MCP_instance.solve(timeout=to)#, intermediate_solutions=True)
-
+    solving_stop = time.time()
+    solving_time = solving_stop-solving_start
 
     #Extract the solution variable
-    print('SOLUTION'+92*'=')
-    Znp = np.array(result["Z"])
-    Zc, Zi = Znp.shape
-    for c in range(Zc):
-        print(f"Path for courier {c+1}")
-        node = Znp[c][Zi-1]
-        print('Depot', end='--->')
-        while node!=Zi:
-            print(node, end='--->')
-            node = Znp[c][node-1]
-        print("Depot")
-        print()
+    # print('SOLUTION'+92*'=')
+    # Znp = np.array(result["Z"])
+    # Zc, Zi = Znp.shape
+    # for c in range(Zc):
+    #     print(f"Path for courier {c+1}")
+    #     node = Znp[c][Zi-1]
+    #     print('Depot', end='--->')
+    #     while node!=Zi:
+    #         print(node, end='--->')
+    #         node = Znp[c][node-1]
+    #     print("Depot")
+    #     print()
 
         
-    print(f"Optimal maximum distance found = {result['objective']}")
-    print(100*'='+ '\n')
+    # print(f"Optimal maximum distance found = {result['objective']}")
+    # print(100*'='+ '\n')
+    Znp = np.array(result["Z"])
+    Zc, Zi = Znp.shape
+    solution = []
+    for c in range(Zc):
+        node = Znp[c][Zi-1]
+        path = []
+        while node!=Zi:
+            path.append(node)
+            node = Znp[c][node-1]
+        solution.append(path)
+
+    tot_time = encoding_time + solving_time
+    if math.floor(tot_time)<300:
+        optimal='true'
+    else:
+        optimal='false'
+
+    results = {
+        "approach":name,
+        "time":math.floor(tot_time),
+        "optimal":optimal,
+        "obj":result['objective'],
+        "sol":solution
+    }
+
+    return results
+
+
+def Solve_SAT(n_couriers, n_items, courier_loads, item_sizes, distances, upper_bound, lower_bound, minimum_distance, break_symmetry=False):
+    encoding_start=time.time()
+    #Convert all parameter values into boolean arrays
+    max_load = max(sum(item_sizes), max(courier_loads))
+    max_load_bits = convert_dec_to_bool(max_load)['Num_bits']
+    UB_bits = convert_dec_to_bool(upper_bound)['Num_bits']
+    Dist = [[Bool(f"dist_{i}_bit_{j}") for j in range(UB_bits)] for i in range(n_couriers)]
+    C = [[Bool(f"courier_load_{i}_bit_{j}") for j in range(max_load_bits)] for i in range(n_couriers)]
+    Max_Dist = [Bool(f"Max_Dist_bit_{i}") for i in range(UB_bits)]
+
+    l_bool = [convert_dec_to_bool(courier_loads[i], max_load_bits)['Conversion'].tolist() for i in range(len(courier_loads))]
+    s_bool = [convert_dec_to_bool(item_sizes[i], max_load_bits)['Conversion'].tolist() for i in range(len(item_sizes))]
+    D_bool = [[convert_dec_to_bool(distances[i][j], UB_bits)['Conversion'].tolist() for j in range(len(distances[i]))] for i in range(len(distances))]
+
+    LB_bool = convert_dec_to_bool(lower_bound, UB_bits)['Conversion'].tolist()
+    UB_bool = convert_dec_to_bool(upper_bound, UB_bits)['Conversion'].tolist()
+    LLB_bool = convert_dec_to_bool(minimum_distance, UB_bits)['Conversion'].tolist()
+
+    #Delivery assignment matrix
+    A = [[Bool(f"a_{i}_{j}") for j in range(n_items)] for i in range(n_couriers)]
+
+    #Graph matrix
+    G = [[[Bool(f"g_{i}_{j}_{k}") for k in range(n_items+1)] for j in range(n_items+1)] for i in range(n_couriers)]
+
+    #Visit sequence matrix
+    V = [[Bool(f"visit_item_{j}_as_{k}") for k in range(n_items)] for j in range(n_items)]
+
+    
+    #Constraint 1: Every item is carried
+    const_1 = And(
+        *[exactly_one_np([A[i][j] for i in range(n_couriers)], f'Item_{j}_is_carried_once') for j in range(n_items)]
+    )
+
+    #Constraint 2: Loads computation constraint
+    const_2 = And(
+        *[sum_cond_on_array_constraint(C[i], s_bool, A[i], f'Full_Load_Courier_{i}') for i in range(n_couriers)]
+    )
+
+    #Constraint 3: Load capacities must be respected
+    const_3 = And(
+        *[compare(C[i], l_bool[i], '<=') for i in range(n_couriers)]
+    )
+
+    #Constraint 4: every courier delivers at least one item
+    const_4 = And(
+        *[at_least_one_np(A[i]) for i in range(n_couriers)]
+    )
+
+    #Constraint 5: every node is visited once
+    const_5 = And(
+        *[exactly_one_np(V[j], f"Item_{j}_in_only_one_path") for j in range(n_items)]
+    )
+
+    #Constraint 6: No self-loops
+    const_6 = And(
+        *[And(*[Not(G[i][j][j]) for j in range(n_items+1)]) for i in range(n_couriers)]
+    )
+
+    #Constraint 7: Channeling between assignment and routing - departure from node j
+    const_7 = And(
+        *[And(*[(Implies(A[i][j], exactly_one_np(G[i][j],  f'Courier_{i}_departs_from_node_{j}'))) for j in range(n_items)], 
+            *[(Implies(Not(A[i][j]), Not(Or(G[i][j])))) for j in range(n_items)]) 
+            for i in range(n_couriers)]
+    )
+
+    #Constraint 8: Channeling between assignment and routing - arrival to node k
+    const_8 = And(
+        *[And(*[(Implies(A[i][k], exactly_one_np([G[i][j][k] for j in range(n_items+1)], f'Courier_{i}_arrives_at_node_{k}'))) for k in range(n_items)], 
+            *[(Implies(Not(A[i][k]), Not(Or([G[i][j][k] for j in range(n_items+1)])))) for k in range(n_items)]) 
+            for i in range(n_couriers)]
+    )
+
+
+    #Constraint 9: Every courier leaves the Depot
+    const_9 = And(
+        *[exactly_one_np(G[i][n_items], f'Courier_{i}_leaves_Depot') for i in range(n_couriers)]
+    )
+
+    #Constraint 10: Every couriers returns to the Depot
+    const_10 = And(
+        *[exactly_one_np([G[i][j][n_items] for j in range(n_items+1)], f'Courier_{i}_returns_to_Depot') for i in range(n_couriers)]
+    )
+
+
+    #Constraint 11: Subtour elimination constraint
+    const_11 = And(
+                *[And(
+                    *[And(
+                        *[Implies(G[i][j][k], consecutive(V[j], V[k])) for k in range(n_items)],
+                        Implies(G[i][n_items][j], V[j][0])) 
+                    for j in range(n_items)])
+                for i in range(n_couriers)])
+
+    #Constraint 12: Distance computation constraint
+    const_12 = And(
+        *[sum_cond_on_array_constraint(Dist[i], flatten(D_bool), flatten(G[i]), f'Distance_Courier_{i}') for i in range(n_couriers)]
+    )
+
+    #Constraint 13: Max_dist is the maximum distance
+    const_13 = And(
+        *[compare(Max_Dist, Dist[i], '>=') for i in range(n_couriers)]
+    )
+
+    #Constraint 14: Max_dist must be equal to one of the distances
+    const_14 = Or(
+        *[compare(Max_Dist, Dist[i], '==') for i in range(n_couriers)]
+    )
+
+    name=''
+    if break_symmetry:
+        name='symmetry_break'
+        #constraint to break symmetry
+    else:
+        name='basic'
+
+
+    #Lower bound constraint
+    lb_const = compare(Max_Dist, LB_bool, '>=')
+    #Upper bound constraint
+    ub_const = And(
+        *[compare(Dist[i], UB_bool, '<=') for i in range(n_couriers)]
+    )
+    llb_const = And(
+        *[compare(Dist[i], LLB_bool, '>=') for i in range(n_couriers)]
+    )
+
+    o = Optimize()
+
+    o.add(const_1) 
+    o.add(const_2) 
+    o.add(const_3)
+    o.add(const_4) 
+    o.add(const_5) 
+    o.add(const_6) 
+    o.add(const_7) 
+    o.add(const_8) 
+    o.add(const_9) 
+    o.add(const_10) 
+    o.add(const_11)
+    o.add(const_12) 
+    o.add(const_13)
+    o.add(const_14) 
+
+    o.add(lb_const)
+    o.add(ub_const)
+    o.add(llb_const)
+
+    encoding_stop = time.time()
+    encoding_time = encoding_stop - encoding_start
+
+    solving_start = time.time()
+    o.set("timeout", math.floor(300000-encoding_time*1000))
+    objective = Sum([If(Max_Dist[i], 2**(len(Max_Dist)-i), 0) for i in range(len(Max_Dist))])
+    o.minimize(objective)
+
+    res = o.check()
+    if res == sat:
+        model=o.model()
+
+        obj=convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])
+
+        result = []
+        for i in range(n_couriers):
+            courier_route=[]
+            for j in range(n_items+1):
+                row=[]
+                for k in range(n_items+1):
+                    row.append(model.evaluate(G[i][j][k]))
+                courier_route.append(row)
+            result.append(courier_route)
+        
+        paths = decode_paths(result, n_couriers, n_items)
+
+
+
+
+    elif res==unsat:
+        print("Unsatisfiable.")
+    else:
+        print("No optimal solution found")
+        model=o.model()
+        obj=convert_bool_to_dec([model.evaluate(Max_Dist[i]) for i in range(UB_bits)])
+
+        result = []
+        for i in range(n_couriers):
+            courier_route=[]
+            for j in range(n_items):
+                row=[]
+                for k in range(n_items):
+                    row.append(model.evaluate(G[i][j][k]))
+                courier_route.append(row)
+            result.append(courier_route)
+        
+        paths = decode_paths(result, n_couriers, n_items)
+    
+    
+    solving_stop = time.time()
+    solving_time = solving_stop-solving_start
+    tot_time = encoding_time+solving_time
+
+    if math.floor(tot_time)<300:
+        optimal='true'
+    else:
+        optimal='false'
+
+    results = {
+        "approach":name,
+        "time":math.floor(tot_time),
+        "optimal":optimal,
+        "obj":obj,
+        "sol":paths
+    }
+
+    return results
