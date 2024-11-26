@@ -1,0 +1,18 @@
+FROM minizinc/mznc2022:latest
+
+RUN apt-get update -y \
+    && apt-get install -y apt-transport-https \
+    && apt-get install -y python3 \
+    && apt-get install -y python3-pip
+
+WORKDIR /src
+
+RUN echo "Starting CDMO Container for Group: Ansari, Carusone, Cremonini"
+
+COPY . .
+
+RUN pip install -r requirements.txt
+
+
+CMD python3 -m http.server
+
