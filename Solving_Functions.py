@@ -310,6 +310,148 @@ def Solve_SAT(n_couriers, n_items, courier_loads, item_sizes, distances, upper_b
     }
 
     return results
+def Solve_SMT(num_couriers, num_objects, capacities, weights, distance_matrix, upper_bound, lower_bound, minimum_distance, break_symmetry=False):
+    depot = num_objects  # Index for the depot (last element in distance matrix)
+    
+
+    LB=lower_bound
+    UB=upper_bound
+
+
+
+    print(f"Lower Bound (LB): {LB}")
+    print(f"Loose Lower Bound (LLB): {LLB}")
+    print(f"Upper Bound (UB): {UB}")
+
+    # Variables, constraints, and solver setup
+    load = [Int(f'load_{i}') for i in range(num_couriers)]
+    assignments = [[Bool(f'assignments_{i}_{j}') for j in range(num_objects)] for i in range(num_couriers)]
+    route = [[[Bool(f'route_{i}_{j}_{k}') for k in range(num_couriers)] for j in range(len(distance_matrix))] for i in range(len(distance_matrix))]
+    visit_order = [[Int(f'visit_order_{j}_{k}') for j in range(num_objects + 1)] for k in range(num_couriers)]
+
+    solver = Optimize()
+
+
+
+    # Constraint: Each item should be assigned to exactly one courier
+    for j in range(num_objects):
+        solver.add(Or([assignments[k][j] for k in range(num_couriers)]))  # At least one assignment
+        for k1, k2 in combinations(range(num_couriers), 2):
+            solver.add(Or(Not(assignments[k1][j]), Not(assignments[k2][j])))  # At most one assignment
+
+    # Load and capacity constraints for each courier
+    for i in range(num_couriers):
+        # Each load is the sum of weights assigned to the courier
+        solver.add(load[i] == Sum([If(assignments[i][j], weights[j], 0) for j in range(num_objects)]))
+        solver.add(load[i] <= capacities[i])
+
+# Channeling constraints between assignments and routes
+    for k in range(num_couriers):
+        for j in range(num_objects):
+            # If item `j` is assigned to courier `k`, courier `k` must visit `j`
+            solver.add(Implies(assignments[k][j], Or([route[i][j][k] for i in range(num_objects + 1) if i != j])))
+
+            # If there's a route to item `j` for courier `k`, item `j` must be assigned to courier `k`
+            solver.add(Implies(Or([route[i][j][k] for i in range(num_objects + 1) if i != j]), assignments[k][j]))
+
+    # Ensure each courier starts from and returns to the depot
+    for k in range(num_couriers):
+        # Courier `k` should start at the depot, with exactly one route from the depot to some other point
+        solver.add(Sum([If(route[depot][j][k], 1, 0) for j in range(num_objects)]) == 1)
+
+        # Courier `k` should return to the depot, with exactly one route to the depot from some other point
+        solver.add(Sum([If(route[j][depot][k], 1, 0) for j in range(num_objects)]) == 1)
+
+    # Flow control to prevent subtours and ensure continuous paths
+    for k in range(num_couriers):
+        solver.add(visit_order[k][depot] == 0)  # Depot is the starting point
+
+        for j in range(num_objects + 1):
+            # Ensure that each non-depot location (assigned location) has exactly one incoming and one outgoing route if visited
+            if j != depot:
+                solver.add(Sum([If(route[i][j][k], 1, 0) for i in range(num_objects + 1) if i != j]) == If(assignments[k][j], 1, 0))
+                solver.add(Sum([If(route[j][i][k], 1, 0) for i in range(num_objects + 1) if i != j]) == If(assignments[k][j], 1, 0))
+
+        # Enforce continuity in visit order if there is a route from i to j for courier k
+        for i in range(num_objects + 1):
+            for j in range(num_objects + 1):
+                if i != j and j != depot:
+                    solver.add(Implies(route[i][j][k], visit_order[k][j] == visit_order[k][i] + 1))
+
+    # Objective: Minimize maximum distance traveled by any courier, within bounds
+    max_distance = Int("max_distance")
+    total_distance = [Int(f"total_distance_{i}") for i in range(num_couriers)]
+
+
+    for k in range(num_couriers):
+        # Sum distances for the route of each courier
+        solver.add(total_distance[k] == Sum([If(route[i][j][k], distance_matrix[i][j], 0)
+                                            for i in range(len(distance_matrix))
+                                            for j in range(len(distance_matrix))]))
+        solver.add(total_distance[k] <= max_distance)  # Ensure max_distance bounds each courier's total distance
+
+
+    solver.minimize(max_distance)  # Minimize the maximum distance among all couriers
+
+    # Add bounds as constraints
+    solver.add(IntVal(LB) <= max_distance)
+    solver.add(max_distance <= IntVal(UB))
+
+    # Solve and output the solution
+    if solver.check() == sat:
+        model = solver.model()
+        loads = [model.evaluate(load[i]) for i in range(num_couriers)]
+        assignments_values = [[model.evaluate(assignments[i][j]) for j in range(num_objects)] for i in range(num_couriers)]
+        distances = [model.evaluate(total_distance[i]) for i in range(num_couriers)]
+        print("Loads per courier:", loads)
+        print("Assignments:", assignments_values)
+        print("Distances per courier:", distances)
+        print("Max distance:", model.evaluate(max_distance))
+
+        for k in range(num_couriers):
+            print(f"Courier {k + 1}:")
+            for i in range(len(distance_matrix)):
+                for j in range(len(distance_matrix)):
+                    if is_true(model.evaluate(route[i][j][k])):
+                        print(f"  Point {i + 1} -> Point {j + 1}")
+        
+
+    else:
+        print("No solution found.")
+
+    result = []
+    for i in range(num_couriers):
+        courier_route=[]
+        for j in range(num_objects):
+            row=[]
+            for k in range(num_objects):
+                row.append(model.evaluate(route[i][j][k]))
+            courier_route.append(row)
+        result.append(courier_route)
+        
+    paths = decode_paths(result, num_couriers, num_objects)
+    
+    
+    solving_stop = time.time()
+
+    solving_time = solving_stop-solving_start
+    tot_time = solving_time
+
+    if math.floor(tot_time)<300:
+        optimal='true'
+    else:
+        optimal='false'
+
+    results = {
+        "approach":name,
+        "time":math.floor(tot_time),
+        "optimal":optimal,
+        "obj":model.evaluate(max_distance),
+        "sol":paths
+    }
+
+
+
 
 def Solve_MIP(m, n, l, s, D, upper_bound, lower_bound, solver_name='gurobi', break_symmetry=False):
     ampl = AMPL()

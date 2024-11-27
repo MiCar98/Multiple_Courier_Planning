@@ -66,8 +66,9 @@ if method=="CP":
 elif method=="SAT":
     dict=Solve_SAT(m, n, l, s, Dnp, UB, LB, LLB)
 elif method=="SMT":
+    dict=Solve_SMT(m, n, l, s, Dnp, UB, LB, LLB)
     #Solve_SMT(...)
-    print("Not Yet Implemented")
+    #print("Not Yet Implemented")
 elif method=="MIP":
     dict=Solve_MIP(m, n, l, s, Dnp, UB, LB, solver, break_symmetry)
 else:
