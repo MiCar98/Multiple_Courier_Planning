@@ -6,8 +6,6 @@ RUN apt-get update -y \
     && apt-get install -y python3-pip \
     && apt-get install -y python3.12-venv 
 
-
-
 WORKDIR /src
 
 RUN echo "Starting CDMO Container for Group: Ansari, Carusone, Cremonini"
@@ -16,7 +14,10 @@ COPY . .
 
 RUN python3 -m venv .venv \
     && . .venv/bin/activate \
-    && python3 -m pip install -r requirements.txt
+    && python3 -m pip install -r requirements.txt \
+    && python3 -m amplpy.modules install highs xpress cplex cbc copt mosek gurobi --no-cache-dir
 
+ENV AMPLKEY_UUID=f064d56b-31cb-4d18-b4a3-6d2566ced127
+
+    
 CMD python3 -m http.server
-

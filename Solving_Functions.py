@@ -1,24 +1,22 @@
 import datetime, os, re
-from minizinc import Instance as mzn_Instance
-from minizinc import Solver as mzn_Solver
-from minizinc import Model as mzn_Model
+from minizinc import Instance, Model, Solver
 import numpy as np
 import time, math
 from z3 import *
 from SAT_utils import *
-#from amplpy import AMPL
+from amplpy import AMPL
 
 def Solve_CP(n_couriers, n_items, courier_loads, item_sizes, distances, upper_bound, lower_bound, minimum_distance, simple=True, solver_name='gecode', break_symmetry=True):
 
     encoding_start = time.time()
-    solver = mzn_Solver.lookup(solver_name)
+    solver = Solver.lookup(solver_name)
     
     if simple:
-        MCP = mzn_Model("CP_Model_4_0_1_easy.mzn")
+        MCP = Model("Project\\CP_Model_4_0_1_easy.mzn")
     else:
-        MCP = mzn_Model("CP_Model_4_0_1_hard.mzn")
+        MCP = Model("Project\\CP_Model_4_0_1_hard.mzn")
 
-    MCP_instance = mzn_Instance(solver, MCP)
+    MCP_instance = Instance(solver, MCP)
 
     MCP_instance['m']=n_couriers
     MCP_instance['n']=n_items
@@ -312,251 +310,111 @@ def Solve_SAT(n_couriers, n_items, courier_loads, item_sizes, distances, upper_b
     }
 
     return results
-def Solve_SMT(num_couriers, num_objects, capacities, weights, distance_matrix, upper_bound, lower_bound, break_symmetry=False):
-    depot = num_objects  # Index for the depot (last element in distance matrix)
-    
 
-    LB=lower_bound
-    UB=upper_bound
+def Solve_MIP(m, n, l, s, D, upper_bound, lower_bound, solver_name='gurobi', break_symmetry=False):
+    ampl = AMPL()
 
-
-    print(f"Lower Bound (LB): {LB}")
-    print(f"Upper Bound (UB): {UB}")
-
-    # Variables, constraints, and solver setup
-    load = [Int(f'load_{i}') for i in range(num_couriers)]
-    assignments = [[Bool(f'assignments_{i}_{j}') for j in range(num_objects)] for i in range(num_couriers)]
-    route = [[[Bool(f'route_{i}_{j}_{k}') for k in range(num_couriers)] for j in range(len(distance_matrix))] for i in range(len(distance_matrix))]
-    visit_order = [[Int(f'visit_order_{j}_{k}') for j in range(num_objects + 1)] for k in range(num_couriers)]
-
-    solver = Optimize()
-
-
-
-    # Constraint: Each item should be assigned to exactly one courier
-    for j in range(num_objects):
-        solver.add(Or([assignments[k][j] for k in range(num_couriers)]))  # At least one assignment
-        for k1, k2 in combinations(range(num_couriers), 2):
-            solver.add(Or(Not(assignments[k1][j]), Not(assignments[k2][j])))  # At most one assignment
-
-    # Load and capacity constraints for each courier
-    for i in range(num_couriers):
-        # Each load is the sum of weights assigned to the courier
-        solver.add(load[i] == Sum([If(assignments[i][j], weights[j], 0) for j in range(num_objects)]))
-        solver.add(load[i] <= capacities[i])
-
-# Channeling constraints between assignments and routes
-    for k in range(num_couriers):
-        for j in range(num_objects):
-            # If item `j` is assigned to courier `k`, courier `k` must visit `j`
-            solver.add(Implies(assignments[k][j], Or([route[i][j][k] for i in range(num_objects + 1) if i != j])))
-
-            # If there's a route to item `j` for courier `k`, item `j` must be assigned to courier `k`
-            solver.add(Implies(Or([route[i][j][k] for i in range(num_objects + 1) if i != j]), assignments[k][j]))
-
-    # Ensure each courier starts from and returns to the depot
-    for k in range(num_couriers):
-        # Courier `k` should start at the depot, with exactly one route from the depot to some other point
-        solver.add(Sum([If(route[depot][j][k], 1, 0) for j in range(num_objects)]) == 1)
-
-        # Courier `k` should return to the depot, with exactly one route to the depot from some other point
-        solver.add(Sum([If(route[j][depot][k], 1, 0) for j in range(num_objects)]) == 1)
-
-    # Flow control to prevent subtours and ensure continuous paths
-    for k in range(num_couriers):
-        solver.add(visit_order[k][depot] == 0)  # Depot is the starting point
-
-        for j in range(num_objects + 1):
-            # Ensure that each non-depot location (assigned location) has exactly one incoming and one outgoing route if visited
-            if j != depot:
-                solver.add(Sum([If(route[i][j][k], 1, 0) for i in range(num_objects + 1) if i != j]) == If(assignments[k][j], 1, 0))
-                solver.add(Sum([If(route[j][i][k], 1, 0) for i in range(num_objects + 1) if i != j]) == If(assignments[k][j], 1, 0))
-
-        # Enforce continuity in visit order if there is a route from i to j for courier k
-        for i in range(num_objects + 1):
-            for j in range(num_objects + 1):
-                if i != j and j != depot:
-                    solver.add(Implies(route[i][j][k], visit_order[k][j] == visit_order[k][i] + 1))
-
-    # Objective: Minimize maximum distance traveled by any courier, within bounds
-    max_distance = Int("max_distance")
-    total_distance = [Int(f"total_distance_{i}") for i in range(num_couriers)]
-
-
-    for k in range(num_couriers):
-        # Sum distances for the route of each courier
-        solver.add(total_distance[k] == Sum([If(route[i][j][k], distance_matrix[i][j], 0)
-                                            for i in range(len(distance_matrix))
-                                            for j in range(len(distance_matrix))]))
-        solver.add(total_distance[k] <= max_distance)  # Ensure max_distance bounds each courier's total distance
-
-    solving_start = time.time()
-    solver.minimize(max_distance)  # Minimize the maximum distance among all couriers
-
-    # Add bounds as constraints
-    solver.add(IntVal(LB) <= max_distance)
-    solver.add(max_distance <= IntVal(UB))
-
-    # Solve and output the solution
-    if solver.check() == sat:
-        model = solver.model()
-        loads = [model.evaluate(load[i]) for i in range(num_couriers)]
-        assignments_values = [[model.evaluate(assignments[i][j]) for j in range(num_objects)] for i in range(num_couriers)]
-        distances = [model.evaluate(total_distance[i]) for i in range(num_couriers)]
-        print("Loads per courier:", loads)
-        print("Assignments:", assignments_values)
-        print("Distances per courier:", distances)
-        print("Max distance:", model.evaluate(max_distance))
-
-        for k in range(num_couriers):
-            print(f"Courier {k + 1}:")
-            for i in range(len(distance_matrix)):
-                for j in range(len(distance_matrix)):
-                    if is_true(model.evaluate(route[i][j][k])):
-                        print(f"  Point {i + 1} -> Point {j + 1}")
-        
-
+    is_symmetric = np.array_equal(D, D.T)
+    if is_symmetric and break_symmetry:
+        ampl.read("MIP/model1_sb.mod")
     else:
-        print("No solution found.")
-    result = []
-    for i in range(num_couriers):
-        courier_route=[]
-        for j in range(num_objects+1):
-            row=[]
-            for k in range(num_objects+1):
-                row.append(model.evaluate(route[j][k][i]))
-            courier_route.append(row)
-        result.append(courier_route)
-        
-    paths = decode_paths(result, num_couriers, num_objects)
-    
-    
-    solving_stop = time.time()
+        ampl.read("MIP/model1.mod")
 
-    solving_time = solving_stop-solving_start
-    tot_time = solving_time
+    ampl.get_parameter("n").set(n)
+    ampl.get_parameter("m").set(m)
+    D_dict = {(i+1, j+1): D[i, j] for i in range(D.shape[0]) for j in range(D.shape[1])}
+    ampl.get_parameter("D").setValues(D_dict)
+    ampl.get_parameter("l").setValues({i+1: l[i] for i in range(len(l))})
+    ampl.get_parameter("s").setValues({i+1: s[i] for i in range(len(s))})
+    ampl.get_parameter("Q").set(int(max(l)))
+    ampl.get_parameter("LB").set(lower_bound)
+    ampl.get_parameter("UB").set(upper_bound)
 
-    if math.floor(tot_time)<300:
+    # Enforce symmetry breaking constraints if break_simmetry parameter is true
+    if break_symmetry:
+        # Implementing hierarchical constarint type 1 (HC1)
+        # Partition the couriers based on their load capacity
+        courier_partitions = {}
+        for idx, capacity in enumerate(l):
+            if capacity not in courier_partitions:
+                courier_partitions[capacity] = []
+            courier_partitions[capacity].append(idx + 1)
+
+        # Given a courier with index k, find the courier with the same capacity and the largest index smaller than k
+        for k in range(2, m+1):
+            # Get the capacity of the given courier
+            courier_capacity = l[k - 1]
+
+            # Find the couriers with the same capacity and smaller index
+            same_capacity_couriers = [idx for idx in courier_partitions[courier_capacity] if idx < k]
+
+            # Get the courier with the largest index among them
+            if same_capacity_couriers:
+                largest_index_courier = max(same_capacity_couriers)
+
+        for k in range(2, m+1):
+            courier_capacity = l[k - 1]
+            same_capacity_couriers = [idx for idx in courier_partitions[courier_capacity] if idx < k]
+            if same_capacity_couriers:
+                largest_index_courier = max(same_capacity_couriers)
+                for j in range(1, n+1):
+                    ampl.eval(f"subject to HC1_{k}_{j}: sum {{i in 1..n+1}} x[i, {j}, {k}]  <= sum {{j_prime in 1..{j}-1}} sum {{i in 1..n+1}} x[i, j_prime, {largest_index_courier}];")
+
+        # Hierarchical constraint on first item delivered
+        for k1 in range(1, m):
+            for k2 in range(k1+1, m+1):
+                if l[k1-1] == l[k2-1]:
+                    for i in range(1, n+1):
+                        for j in range(i+1, n+1):
+                            ampl.eval(f"subject to HC1_{k1}_{k2}_{i}_{j}: x[n+1,{j},{k1}] + x[n+1,{i},{k2}] <= 1;")    
+
+    ampl.setOption('randseed', 42)
+    ampl.setOption("solver", solver_name)
+    ampl.setOption(solver_name + "_options", "timelim=300 timing=2 seed=42")
+    solver_output = ampl.get_output("solve;")
+    solver_time_match = re.search(r"Solver time = ([\d.]+)s", solver_output)
+    solver_time = float(solver_time_match.group(1)) if solver_time_match else None
+
+    # Extract the solution variable
+    print('SOLUTION'+92*'=')
+    
+    x = ampl.getVariable("x").getValues()
+    u = ampl.getVariable("u").getValues()
+    maxDist = int(ampl.getVariable("maxDist").value())
+    
+    print(f"Optimal maximum distance found = {maxDist}")
+    print(100*'='+ '\n')
+
+    xnp = x.to_pandas().values.reshape((n+1, n+1, m))
+    solution = []
+    for k in range(1, m + 1):
+        path = []
+        current_node = n + 1
+        while True:
+            next_node = None
+            for i in range(1, n + 1):
+                if xnp[current_node-1, i-1, k-1] > 0.5:
+                    next_node = i
+                    break
+            if next_node is None:
+                break
+            path.append(next_node)
+            current_node = next_node
+        solution.append(path)
+        print(f"Path for courier {k}: {'--->'.join(map(str, path))}")
+        print()
+
+    if math.floor(solver_time)<300:
         optimal='true'
     else:
         optimal='false'
 
     results = {
-        "approach":'SMT_'+str(break_symmetry),
-        "time":math.floor(tot_time),
+        "approach":solver_name + ' + SB' if break_symmetry else solver_name,
+        "time":math.floor(solver_time),
         "optimal":optimal,
-        "obj":model.evaluate(max_distance),
-        "sol":paths
+        "obj":maxDist,
+        "sol":solution
     }
 
     return results
-
-
-
-# def Solve_MIP(m, n, l, s, D, upper_bound, lower_bound, solver_name='gurobi', break_symmetry=False):
-#     ampl = AMPL()
-
-#     is_symmetric = np.array_equal(D, D.T)
-#     if is_symmetric and break_symmetry:
-#         ampl.read("model1_sb.mod")
-#     else:
-#         ampl.read("model1.mod")
-
-#     ampl.get_parameter("n").set(n)
-#     ampl.get_parameter("m").set(m)
-#     D_dict = {(i+1, j+1): D[i, j] for i in range(D.shape[0]) for j in range(D.shape[1])}
-#     ampl.get_parameter("D").setValues(D_dict)
-#     ampl.get_parameter("l").setValues({i+1: l[i] for i in range(len(l))})
-#     ampl.get_parameter("s").setValues({i+1: s[i] for i in range(len(s))})
-#     ampl.get_parameter("Q").set(int(max(l)))
-#     ampl.get_parameter("LB").set(lower_bound)
-#     ampl.get_parameter("UB").set(upper_bound)
-
-#     # Enforce symmetry breaking constraints if break_simmetry parameter is true
-#     if break_symmetry:
-#         # Implementing hierarchical constarint type 1 (HC1)
-#         # Partition the couriers based on their load capacity
-#         courier_partitions = {}
-#         for idx, capacity in enumerate(l):
-#             if capacity not in courier_partitions:
-#                 courier_partitions[capacity] = []
-#             courier_partitions[capacity].append(idx + 1)
-
-#         # Given a courier with index k, find the courier with the same capacity and the largest index smaller than k
-#         for k in range(2, m+1):
-#             # Get the capacity of the given courier
-#             courier_capacity = l[k - 1]
-
-#             # Find the couriers with the same capacity and smaller index
-#             same_capacity_couriers = [idx for idx in courier_partitions[courier_capacity] if idx < k]
-
-#             # Get the courier with the largest index among them
-#             if same_capacity_couriers:
-#                 largest_index_courier = max(same_capacity_couriers)
-
-#         for k in range(2, m+1):
-#             courier_capacity = l[k - 1]
-#             same_capacity_couriers = [idx for idx in courier_partitions[courier_capacity] if idx < k]
-#             if same_capacity_couriers:
-#                 largest_index_courier = max(same_capacity_couriers)
-#                 for j in range(1, n+1):
-#                     ampl.eval(f"subject to HC1_{k}_{j}: sum {{i in 1..n+1}} x[i, {j}, {k}]  <= sum {{j_prime in 1..{j}-1}} sum {{i in 1..n+1}} x[i, j_prime, {largest_index_courier}];")
-
-#         # Hierarchical constraint on first item delivered
-#         for k1 in range(1, m):
-#             for k2 in range(k1+1, m+1):
-#                 if l[k1-1] == l[k2-1]:
-#                     for i in range(1, n+1):
-#                         for j in range(i+1, n+1):
-#                             ampl.eval(f"subject to HC1_{k1}_{k2}_{i}_{j}: x[n+1,{j},{k1}] + x[n+1,{i},{k2}] <= 1;")    
-
-#     ampl.setOption('randseed', 42)
-#     ampl.setOption("solver", solver_name)
-#     ampl.setOption(solver_name + "_options", "timelim=300 timing=2 seed=42")
-#     solver_output = ampl.get_output("solve;")
-#     solver_time_match = re.search(r"Solver time = ([\d.]+)s", solver_output)
-#     solver_time = float(solver_time_match.group(1)) if solver_time_match else None
-
-#     # Extract the solution variable
-#     print('SOLUTION'+92*'=')
-    
-#     x = ampl.getVariable("x").getValues()
-#     u = ampl.getVariable("u").getValues()
-#     maxDist = int(ampl.getVariable("maxDist").value())
-    
-#     print(f"Optimal maximum distance found = {maxDist}")
-#     print(100*'='+ '\n')
-
-#     xnp = x.to_pandas().values.reshape((n+1, n+1, m))
-#     solution = []
-#     for k in range(1, m + 1):
-#         path = []
-#         current_node = n + 1
-#         while True:
-#             next_node = None
-#             for i in range(1, n + 1):
-#                 if xnp[current_node-1, i-1, k-1] > 0.5:
-#                     next_node = i
-#                     break
-#             if next_node is None:
-#                 break
-#             path.append(next_node)
-#             current_node = next_node
-#         solution.append(path)
-#         print(f"Path for courier {k}: {'--->'.join(map(str, path))}")
-#         print()
-
-#     if math.floor(solver_time)<300:
-#         optimal='true'
-#     else:
-#         optimal='false'
-
-#     results = {
-#         "approach":solver_name + ' + SB' if break_symmetry else solver_name,
-#         "time":math.floor(solver_time),
-#         "optimal":optimal,
-#         "obj":maxDist,
-#         "sol":solution
-#     }
-
-#     return results

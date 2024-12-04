@@ -1,3 +1,5 @@
 minizinc
 z3-solver
 numpy
+amplpy
+pandas
