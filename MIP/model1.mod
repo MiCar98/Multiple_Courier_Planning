@@ -74,8 +74,8 @@ subject to SuccessiveVisit2{k in 1..m, i in 1..n, j in 1..n}:
     w[j] - w[i] <= 1 + 2*n*(1 - x[i,j,k]); */
 
 # Each courier delivers at least one item (implied by NoSelfLoops)
-subject to NoIdleCourier{k in 1..m}:
-    x[n+1, n+1, k] = 0;
+/*subject to NoIdleCourier{k in 1..m}:
+    x[n+1, n+1, k] = 0;*/
 
 # Constraint on objective function: ensure maxDist is at least the distance traveled by each courier
 subject to MaxDistanceConstraint{k in 1..m}:
