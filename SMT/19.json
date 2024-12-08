@@ -1,0 +1,26 @@
+{
+"z3_direct_dist_symmetry_break":
+{"time":309,
+"optimal":false,
+"obj":max_distance,
+"sol":[[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
+},
+"z3_direct_load_symmetry_break":
+{"time":302,
+"optimal":false,
+"obj":max_distance,
+"sol":[[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
+},
+"z3_direct":
+{"time":303,
+"optimal":false,
+"obj":max_distance,
+"sol":[[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
+},
+"z3_direct_full_symmetry_break":
+{"time":971,
+"optimal":false,
+"obj":max_distance,
+"sol":[[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
+}
+}

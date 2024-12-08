@@ -1,0 +1,38 @@
+{
+"cvc5_SMTLIB":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+},
+"z3_SMTLIB":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+},
+"z3_direct_full_symmetry_break":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+},
+"z3_direct":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+},
+"z3_direct_load_symmetry_break":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+},
+"z3_direct":
+{"time":0,
+"optimal":true,
+"obj":206,
+"sol":[[2], [1, 3]]
+}
+}
