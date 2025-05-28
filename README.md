@@ -12,7 +12,7 @@ Multiple Couriers Planning (MCP) captures this decision problem:
 
 • We have m couriers, each with a capacity limit lᵢ.  
 • We have n (≥ m) items. Item j has a customer location j and a size sⱼ.  
-• D is the distance matrix, containing at Di,j the distance from node i to node j, with node n + 1 being the depot node.
+• D is the distance matrix, containing at Di,j the distance from node i to node j, with node n + 1 being the depot node.  
 • For each courier, we must choose which items to deliver and in which order to visit the corresponding customer locations.  
 • Every tour starts and ends at a common depot o, must respect capacity, and our objective is to **minimise the maximum tour length among all couriers** (min–max fairness).
 
