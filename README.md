@@ -30,15 +30,15 @@ The goals are to:
 • Lower/upper bounds on the objective function to tighten the search space.  
 • Implied constraints and global constraints (in CP) are exploited.  
 • Symmetry-breaking constraints reduce duplicate search.  
-• All solvers were capped at **300 s** wall-clock time to compare the different approaches fairly.
-• Random seeds for each approach and solver were fixed for reproducibility.
-• To be reproducible, the code was executed through Docker.
+• All solvers were capped at **300 s** wall-clock time to compare the different approaches fairly.  
+• Random seeds for each approach and solver were fixed for reproducibility.  
+• To be reproducible, the code was executed through Docker.  
 
 ---
 
 ## 3. Results  
 
-The different models were tested on 21 instances, the first 10 being easier (with m and n ranging from 2, 3 to 10, 13) and the remaining being hard-to-solve instances (with m and n ranging from 20, 47 to 20, 287). Even with a strict five-minute cutoff, the four paradigms behaved very differently:
+The different models were tested on 21 instances, the first 10 being easier (with m and n ranging from 2, 3 to 10, 13) and the remaining being larger hard-to-solve instances (with m and n ranging from 20, 47 to 20, 287). Even with a strict five-minute cutoff, the four paradigms behaved very differently:
 
 • **CP is the clear winner**: it produced a feasible solution for all 21 instances within the time limit, and reached the optimal solution for every easy instance and 3 of the hardest ones.  
 • **MIP shows promise on large cases**: although its formulations are heavier, the model optimally solved the first 10 instances and solved 4 of the hard ones, reaching the optimal solution twice.  
